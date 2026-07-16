@@ -105,10 +105,98 @@
 
   const audio = new Audio();
   audio.preload = "metadata";
+  audio.playbackRate = 0.93;
+  audio.preservesPitch = true;
+  let voiceAudioContext = null;
+  let voiceAudioSource = null;
   const backgroundMusic = new Audio("/audio/background/zuiyu-changwan.ogg");
   backgroundMusic.preload = "auto";
   backgroundMusic.loop = true;
-  backgroundMusic.volume = 0.11;
+  backgroundMusic.volume = 0.135;
+
+  function ensureSoftVoiceAudio() {
+    if (voiceAudioSource) {
+      if (voiceAudioContext && voiceAudioContext.state === "suspended") {
+        voiceAudioContext.resume().catch(function () { /* 等待下一次用户点击。 */ });
+      }
+      return;
+    }
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      audio.volume = 0.86;
+      return;
+    }
+
+    try {
+      voiceAudioContext = new AudioContextClass();
+      voiceAudioSource = voiceAudioContext.createMediaElementSource(audio);
+
+      const warmth = voiceAudioContext.createBiquadFilter();
+      warmth.type = "lowshelf";
+      warmth.frequency.value = 180;
+      warmth.gain.value = 2.4;
+
+      const presence = voiceAudioContext.createBiquadFilter();
+      presence.type = "peaking";
+      presence.frequency.value = 3100;
+      presence.Q.value = 0.9;
+      presence.gain.value = -2.2;
+
+      const softness = voiceAudioContext.createBiquadFilter();
+      softness.type = "highshelf";
+      softness.frequency.value = 5600;
+      softness.gain.value = -3.1;
+
+      const compressor = voiceAudioContext.createDynamicsCompressor();
+      compressor.threshold.value = -22;
+      compressor.knee.value = 22;
+      compressor.ratio.value = 1.65;
+      compressor.attack.value = 0.026;
+      compressor.release.value = 0.38;
+
+      const output = voiceAudioContext.createGain();
+      output.gain.value = 0.9;
+
+      const storySpace = voiceAudioContext.createConvolver();
+      const storySpaceDuration = 0.34;
+      const storySpaceLength = Math.floor(voiceAudioContext.sampleRate * storySpaceDuration);
+      const storySpaceBuffer = voiceAudioContext.createBuffer(2, storySpaceLength, voiceAudioContext.sampleRate);
+      for (let channel = 0; channel < storySpaceBuffer.numberOfChannels; channel += 1) {
+        const samples = storySpaceBuffer.getChannelData(channel);
+        for (let index = 0; index < storySpaceLength; index += 1) {
+          const decay = Math.pow(1 - index / storySpaceLength, 3.4);
+          samples[index] = (Math.random() * 2 - 1) * decay;
+        }
+      }
+      storySpace.buffer = storySpaceBuffer;
+
+      const storySpaceTone = voiceAudioContext.createBiquadFilter();
+      storySpaceTone.type = "lowpass";
+      storySpaceTone.frequency.value = 3600;
+
+      const storySpaceGain = voiceAudioContext.createGain();
+      storySpaceGain.gain.value = 0.035;
+
+      voiceAudioSource
+        .connect(warmth)
+        .connect(presence)
+        .connect(softness)
+        .connect(compressor);
+      compressor.connect(output).connect(voiceAudioContext.destination);
+      compressor
+        .connect(storySpace)
+        .connect(storySpaceTone)
+        .connect(storySpaceGain)
+        .connect(voiceAudioContext.destination);
+
+      if (voiceAudioContext.state === "suspended") {
+        voiceAudioContext.resume().catch(function () { /* 等待下一次用户点击。 */ });
+      }
+    } catch (error) {
+      audio.volume = 0.86;
+    }
+  }
 
   const manifestReady = fetch(voiceManifestUrl)
     .then(function (response) {
@@ -186,7 +274,7 @@
   }
 
   function duckBackgroundMusic(ducked) {
-    backgroundMusic.volume = ducked ? 0.025 : 0.11;
+    backgroundMusic.volume = ducked ? 0.032 : 0.135;
   }
 
   function disableLegacySoundEffects() {
@@ -212,7 +300,7 @@
     consoleElement.innerHTML = [
       '<div class="voice-main">',
       '<button class="voice-toggle" type="button" aria-label="播放或暂停当前黄裳讲解">▶</button>',
-      '<div class="voice-copy"><small>黄裳 · V3 全站讲解</small><strong>选择页面或景点开始讲解</strong></div>',
+      '<div class="voice-copy"><small>黄裳 · V3 柔声讲解</small><strong>选择页面或景点开始讲解</strong></div>',
       '<span class="voice-time">00:00 / 00:00</span>',
       '</div>',
       '<div class="voice-progress" role="slider" tabindex="0" aria-label="配音播放进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>',
@@ -224,7 +312,10 @@
       if (!currentEntry) return;
       voiceMasterOn = true;
       safeStorageSet("xingtu-voice-enabled", "true");
-      if (audio.paused) audio.play().catch(function () { showVoiceError("请再次点击播放按钮"); });
+      if (audio.paused) {
+        ensureSoftVoiceAudio();
+        audio.play().catch(function () { showVoiceError("请再次点击播放按钮"); });
+      }
       else audio.pause();
     });
 
@@ -431,7 +522,10 @@
     window.clearTimeout(voiceHideTimer);
 
     if (currentVoiceId === id && audio.src) {
-      if (audio.paused) audio.play().catch(function () { showVoiceError("请点击播放器继续讲解"); });
+      if (audio.paused) {
+        ensureSoftVoiceAudio();
+        audio.play().catch(function () { showVoiceError("请点击播放器继续讲解"); });
+      }
       else audio.pause();
       return;
     }
@@ -450,6 +544,7 @@
 
     audio.load();
     if (voiceMasterOn) {
+      ensureSoftVoiceAudio();
       audio.play().catch(function () { showVoiceError("浏览器已拦截自动播放，请点击圆形播放按钮"); });
     }
   }
@@ -508,6 +603,7 @@
   }
 
   audio.addEventListener("play", function () {
+    ensureSoftVoiceAudio();
     window.clearTimeout(voiceHideTimer);
     duckBackgroundMusic(true);
     updateVoiceConsole();
