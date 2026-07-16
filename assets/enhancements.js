@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const PRELUDE_DURATION = 7400;
+  const PRELUDE_DURATION = 3200;
   const voiceManifestUrl = "/audio/voice-manifest.json";
   const astronomyPages = [
     { label: "创制背景", icon: "观", name: "观象", fact: "1190年", note: "观测 · 整理 · 绘图" },
@@ -102,6 +102,9 @@
   let journeyCaptionShown = false;
   let allowLegacySoundToggle = false;
   let undoNavigation = null;
+  let openingVoiceAttempted = false;
+  let architectureModuleRequested = false;
+  let travelModuleRequested = false;
 
   const audio = new Audio();
   audio.preload = "metadata";
@@ -109,6 +112,7 @@
   audio.preservesPitch = true;
   let voiceAudioContext = null;
   let voiceAudioSource = null;
+  let voiceOutputGain = null;
   const backgroundMusic = new Audio("/audio/background/zuiyu-changwan.ogg");
   backgroundMusic.preload = "auto";
   backgroundMusic.loop = true;
@@ -157,6 +161,7 @@
 
       const output = voiceAudioContext.createGain();
       output.gain.value = 0.9;
+      voiceOutputGain = output;
 
       const storySpace = voiceAudioContext.createConvolver();
       const storySpaceDuration = 0.34;
@@ -569,6 +574,44 @@
     return cue ? cue.text : (currentEntry ? currentEntry.script : "");
   }
 
+  function applyNarrativeProsody() {
+    if (!subtitleCues.length || !Number.isFinite(audio.currentTime)) {
+      audio.playbackRate = 0.93;
+      return;
+    }
+
+    const cue = subtitleCues.find(function (item) {
+      return audio.currentTime >= item.start && audio.currentTime < item.end;
+    });
+    if (!cue) {
+      audio.playbackRate = 0.92;
+      return;
+    }
+
+    const duration = Math.max(0.2, cue.end - cue.start);
+    const progress = Math.max(0, Math.min(1, (audio.currentTime - cue.start) / duration));
+    const isQuestion = /[？?]$/.test(cue.text);
+    const isHistoricalLine = /相传|史料|古人|李白|黄裳|剑阁|蜀道|星河|千年|南宋|明代|北宋/.test(cue.text);
+    let rate = isHistoricalLine ? 0.915 : 0.93;
+    let gain = 0.88;
+
+    if (progress < 0.18) {
+      rate -= 0.015;
+      gain = 0.84;
+    } else if (progress < 0.72) {
+      rate += 0.025;
+      gain = 0.93;
+    } else {
+      rate += isQuestion ? 0.018 : -0.02;
+      gain = isQuestion ? 0.91 : 0.85;
+    }
+
+    audio.playbackRate = Math.max(0.88, Math.min(0.97, rate));
+    if (voiceAudioContext && voiceOutputGain) {
+      voiceOutputGain.gain.setTargetAtTime(gain, voiceAudioContext.currentTime, 0.09);
+    }
+  }
+
   function updateVoiceConsole(state) {
     const consoleElement = document.querySelector(".voice-console");
     if (!consoleElement) return;
@@ -614,7 +657,10 @@
     updateVoiceConsole();
     updateMediaControlDock();
   });
-  audio.addEventListener("timeupdate", function () { updateVoiceConsole(); });
+  audio.addEventListener("timeupdate", function () {
+    applyNarrativeProsody();
+    updateVoiceConsole();
+  });
   audio.addEventListener("loadedmetadata", function () { updateVoiceConsole(); });
   audio.addEventListener("ended", function () {
     duckBackgroundMusic(false);
@@ -749,6 +795,54 @@
     button.innerHTML = "<small>ENTER THE SCROLL</small><strong>开启长卷</strong><span>先观天文 · 再行蜀道</span>";
   }
 
+  function injectOpeningAstronomyProjection() {
+    const openingScreen = document.querySelector(".opening-screen");
+    const openingMap = openingScreen?.querySelector(".opening-map");
+    if (!openingScreen || !openingMap || openingScreen.querySelector(".opening-astronomy-projection")) return;
+
+    const projection = document.createElement("div");
+    projection.className = "opening-astronomy-projection";
+    projection.setAttribute("aria-hidden", "true");
+    projection.innerHTML = [
+      '<div class="projection-orbit orbit-one"></div>',
+      '<div class="projection-orbit orbit-two"></div>',
+      '<div class="projection-orbit orbit-three"></div>',
+      '<div class="projection-meridian"></div>',
+      '<div class="projection-stars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>',
+      '<span class="projection-label label-ziwei">紫微垣</span>',
+      '<span class="projection-label label-taiwei">太微垣</span>',
+      '<span class="projection-label label-tianshi">天市垣</span>',
+      '<p><small>天文投影 · 南宋星官秩序</small><strong>一夫当关，万夫莫开</strong><em>李白《蜀道难》</em></p>'
+    ].join("");
+    openingMap.appendChild(projection);
+  }
+
+  function requestOpeningVoice() {
+    if (openingVoiceAttempted || !document.querySelector(".opening-screen")) return;
+    openingVoiceAttempted = true;
+    window.setTimeout(function () {
+      playVoice("VO-OPEN-01");
+    }, 260);
+  }
+
+  function loadFeatureModulesWhenNeeded() {
+    const needsArchitecture = Boolean(document.querySelector(".history-stage, .architecture-explorer"));
+    const needsTravel = Boolean(document.querySelector(".travel-detail-screen, .travel-station-viewer"));
+
+    if (needsArchitecture && !architectureModuleRequested) {
+      architectureModuleRequested = true;
+      import("/assets/architecture-viewer.js").catch(function () {
+        architectureModuleRequested = false;
+      });
+    }
+    if (needsTravel && !travelModuleRequested) {
+      travelModuleRequested = true;
+      import("/assets/travel-station-viewer.js").catch(function () {
+        travelModuleRequested = false;
+      });
+    }
+  }
+
   function findTravelNumber(name) {
     const index = travelStops.indexOf(name);
     return index >= 0 ? index + 1 : 0;
@@ -790,6 +884,8 @@
     injectAstronomyRail();
     enrichConstellationCards();
     enhanceOpeningButton();
+    injectOpeningAstronomyProjection();
+    requestOpeningVoice();
     injectHomeVoiceButton();
     injectJourneyIntroCaption();
     injectRouteRibbon();
@@ -797,6 +893,7 @@
     createMediaControlDock();
     createPageNavDock();
     updatePageNavDock();
+    loadFeatureModulesWhenNeeded();
   }
 
   function queueEnhance() {
@@ -913,6 +1010,16 @@
     createMediaControlDock();
     createPageNavDock();
     startBackgroundMusic();
+    document.addEventListener("pointerdown", function resumeOpeningVoiceOnGesture() {
+      if (!document.querySelector(".opening-screen")) return;
+      if (currentVoiceId !== "VO-OPEN-01") {
+        playVoice("VO-OPEN-01");
+      } else if (audio.paused) {
+        ensureSoftVoiceAudio();
+        audio.play().catch(function () { /* 用户仍可点击讲解按钮播放。 */ });
+      }
+      document.removeEventListener("pointerdown", resumeOpeningVoiceOnGesture, true);
+    }, true);
     document.addEventListener("pointerdown", function resumeBackgroundMusic() {
       if (backgroundMusicOn && backgroundMusic.paused) startBackgroundMusic();
     }, { once: true, capture: true });
