@@ -615,7 +615,10 @@ async function openStationExplorer(profile, initialPhoto = null) {
     const camera = new THREE.PerspectiveCamera(43, 1, 0.1, 180);
     camera.position.set(17, 10, 22);
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+    const deviceMemory = Number(navigator.deviceMemory || 8);
+    const coreCount = Number(navigator.hardwareConcurrency || 8);
+    const maxPixelRatio = deviceMemory <= 4 || coreCount <= 4 ? 1 : 1.35;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -636,7 +639,7 @@ async function openStationExplorer(profile, initialPhoto = null) {
     const keyLight = new THREE.DirectionalLight(profile.accent, 4.1);
     keyLight.position.set(-10, 19, 11);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.mapSize.set(1024, 1024);
     keyLight.shadow.camera.left = -24;
     keyLight.shadow.camera.right = 24;
     keyLight.shadow.camera.top = 24;
@@ -691,16 +694,20 @@ async function openStationExplorer(profile, initialPhoto = null) {
     resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(canvasHost);
     currentExplorer = { close };
-    const animate = () => {
+    let lastRenderTime = 0;
+    const renderInterval = 1000 / 30;
+    const animate = (time = 0) => {
       if (closed) return;
+      frameId = requestAnimationFrame(animate);
+      if (document.hidden || time - lastRenderTime < renderInterval) return;
+      lastRenderTime = time;
       controls.update();
       renderer.render(scene, camera);
-      frameId = requestAnimationFrame(animate);
     };
     resize();
     animate();
     setLoadingState(100, "场景装载完成 · 正在开启视野");
-    const minimumLoadingTime = Math.max(0, 1050 - (performance.now() - loadingStartedAt));
+    const minimumLoadingTime = Math.max(0, 360 - (performance.now() - loadingStartedAt));
     await new Promise((resolve) => window.setTimeout(resolve, minimumLoadingTime));
     if (closed) return;
     loading.classList.add("is-complete");

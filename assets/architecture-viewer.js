@@ -297,7 +297,10 @@ async function openExplorer(variant) {
     shell.querySelector(".architecture-loading span").textContent = "当前设备无法创建三维画面，请开启浏览器硬件加速";
     return;
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+  const deviceMemory = Number(navigator.deviceMemory || 8);
+  const coreCount = Number(navigator.hardwareConcurrency || 8);
+  const maxPixelRatio = deviceMemory <= 4 || coreCount <= 4 ? 1 : 1.35;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -318,7 +321,7 @@ async function openExplorer(variant) {
   const moon = new THREE.DirectionalLight(0xd8eced, 4.8);
   moon.position.set(-7, 12, 8);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.mapSize.set(1024, 1024);
   moon.shadow.camera.left = -12;
   moon.shadow.camera.right = 12;
   moon.shadow.camera.top = 12;
@@ -403,6 +406,7 @@ async function openExplorer(variant) {
     if (destroyed) return;
     destroyed = true;
     renderer.setAnimationLoop(null);
+    resizeObserver.disconnect();
     controls.dispose();
     renderer.dispose();
     shell.remove();
@@ -416,8 +420,12 @@ async function openExplorer(variant) {
 
   currentExplorer = { destroy, setInside };
   resize();
+  let lastRenderTime = 0;
+  const renderInterval = 1000 / 30;
   renderer.setAnimationLoop((time) => {
     if (destroyed) return;
+    if (document.hidden || time - lastRenderTime < renderInterval) return;
+    lastRenderTime = time;
     const doorSpeed = 0.065;
     doors.progress += (doors.target - doors.progress) * doorSpeed;
     doors.left.rotation.y = doors.progress * 1.22;

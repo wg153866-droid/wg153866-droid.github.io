@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const PRELUDE_DURATION = 3200;
+  const PRELUDE_DURATION = 1500;
   const voiceManifestUrl = "/audio/voice-manifest.json";
   const astronomyPages = [
     { label: "创制背景", icon: "观", name: "观象", fact: "1190年", note: "观测 · 整理 · 绘图" },
@@ -114,7 +114,7 @@
   let voiceAudioSource = null;
   let voiceOutputGain = null;
   const backgroundMusic = new Audio("/audio/background/zuiyu-changwan.ogg");
-  backgroundMusic.preload = "auto";
+  backgroundMusic.preload = "none";
   backgroundMusic.loop = true;
   backgroundMusic.volume = 0.135;
 
@@ -843,6 +843,39 @@
     }
   }
 
+  function shortenAstronomyTransition() {
+    const transition = document.querySelector(".scroll-transition");
+    if (!transition || transition.dataset.fastForwardReady === "true") return;
+    transition.dataset.fastForwardReady = "true";
+    window.setTimeout(function () {
+      if (!transition.isConnected) return;
+      const openButton = transition.querySelector(".scroll-paper button");
+      if (openButton) openButton.click();
+    }, 1350);
+  }
+
+  function enableAdaptiveQuality() {
+    if (document.body.dataset.adaptiveQualityChecked === "true") return;
+    const memory = Number(navigator.deviceMemory || 8);
+    const cores = Number(navigator.hardwareConcurrency || 8);
+    const shouldUseSmoothMode = memory <= 4 || cores <= 4;
+    const qualityButton = Array.from(document.querySelectorAll(".global-actions button")).find(function (button) {
+      return button.textContent.trim() === "高画质";
+    });
+    if (!qualityButton) return;
+    document.body.dataset.adaptiveQualityChecked = "true";
+    if (shouldUseSmoothMode) qualityButton.click();
+  }
+
+  function optimizeDynamicMedia() {
+    document.querySelectorAll("img").forEach(function (image) {
+      image.decoding = "async";
+      if (!image.closest(".opening-map, .premium-prelude") && !image.hasAttribute("loading")) {
+        image.loading = "lazy";
+      }
+    });
+  }
+
   function findTravelNumber(name) {
     const index = travelStops.indexOf(name);
     return index >= 0 ? index + 1 : 0;
@@ -894,6 +927,9 @@
     createPageNavDock();
     updatePageNavDock();
     loadFeatureModulesWhenNeeded();
+    shortenAstronomyTransition();
+    enableAdaptiveQuality();
+    optimizeDynamicMedia();
   }
 
   function queueEnhance() {
@@ -1009,7 +1045,9 @@
     createVoiceConsole();
     createMediaControlDock();
     createPageNavDock();
-    startBackgroundMusic();
+    window.addEventListener("load", function () {
+      window.setTimeout(startBackgroundMusic, 700);
+    }, { once: true });
     document.addEventListener("pointerdown", function resumeOpeningVoiceOnGesture() {
       if (!document.querySelector(".opening-screen")) return;
       if (currentVoiceId !== "VO-OPEN-01") {
@@ -1027,7 +1065,7 @@
     const root = document.getElementById("root");
     if (root) {
       const observer = new MutationObserver(queueEnhance);
-      observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+      observer.observe(root, { childList: true, subtree: true });
     }
   });
 })();

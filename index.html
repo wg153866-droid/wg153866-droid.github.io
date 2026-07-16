@@ -7,7 +7,6 @@
     <meta name="theme-color" content="#06191d" />
     <title>星图蜀道｜黄裳天文与翠云廊互动长卷</title>
     <link rel="preload" href="/images/sichuan-jiange-map.webp" as="image" fetchpriority="high">
-    <link rel="preload" href="/audio/01_%E5%9F%BA%E7%A1%80%E6%B5%81%E7%A8%8B/VO-OPEN-01.mp3" as="audio">
     <script type="module" crossorigin src="/assets/index-CbLSGL4l.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CDZb9ZxE.css">
     <link rel="stylesheet" href="/assets/enhancements.css">
@@ -15,11 +14,20 @@
     <script type="importmap">
       {"imports":{"three":"/vendor/three/three.module.js"}}
     </script>
-    <script defer src="/assets/enhancements.js?v=opening-projection-3"></script>
+    <script defer src="/assets/enhancements.js?v=performance-4"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("/sw.js").catch(function () {
+            /* 离线启动器或受限浏览器不支持时，网站仍可正常使用。 */
+          });
+        }, { once: true });
+      }
+    </script>
   </head>
   <body>
     <div id="premium-prelude" class="premium-prelude" role="status" aria-live="polite" aria-label="黄裳沿蜀道走向剑阁，正在加载互动长卷">
-      <img class="prelude-scene" src="/images/huangshang-jiange-hero.png" alt="黄裳沿千年古柏夹道的青石蜀道走向剑阁关楼" />
+      <img class="prelude-scene" src="/images/huangshang-jiange-hero.webp" alt="黄裳沿千年古柏夹道的青石蜀道走向剑阁关楼" decoding="async" fetchpriority="high" />
       <div class="prelude-shade" aria-hidden="true"></div>
       <div class="prelude-scan" aria-hidden="true"></div>
       <header class="prelude-masthead" aria-hidden="true">
